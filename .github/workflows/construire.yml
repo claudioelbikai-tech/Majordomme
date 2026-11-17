@@ -1,0 +1,49 @@
+# Compile Majordome sur un Mac de GitHub (gratuit pour un dépôt public), le teste,
+# fabrique Majordome.dmg et le publie sur la page Releases.
+name: Construire Majordome
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: construire-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  construire:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version de Swift
+        run: swift --version
+
+      - name: Tests de la logique
+        run: swift test
+
+      - name: Fabriquer Majordome.app et Majordome.dmg
+        run: ./outils/construire.sh
+
+      - name: Garder le DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: Majordome
+          path: build/Majordome.dmg
+          retention-days: 30
+
+      - name: Publier la page de téléchargement
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          gh release delete "v$VERSION" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "v$VERSION" build/Majordome.dmg \
+            --title "Majordome $VERSION" \
+            --notes-file outils/notes.md \
+            --target "$GITHUB_SHA" \
+            --latest
